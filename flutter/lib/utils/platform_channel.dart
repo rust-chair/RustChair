@@ -14,14 +14,14 @@ class RdPlatformChannel {
   static RdPlatformChannel get instance => _windowUtil;
 
   final MethodChannel _hostMethodChannel =
-      MethodChannel("org.rustdesk.rustdesk/host");
+      MethodChannel("com.rustchair.RustChair/host");
 
   /// Bump the position of the mouse cursor, if applicable
   Future<bool> bumpMouse({required int dx, required int dy}) async {
     // No debug output; this call is too chatty.
 
     bool? result = await _hostMethodChannel
-      .invokeMethod("bumpMouse", {"dx": dx, "dy": dy});
+        .invokeMethod("bumpMouse", {"dx": dx, "dy": dy});
 
     return result ?? false;
   }

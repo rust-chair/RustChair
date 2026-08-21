@@ -9,7 +9,7 @@ import com.carriez.flutter_hbb.RdClipboardManager
 
 object FFI {
     init {
-        System.loadLibrary("rustdesk")
+        System.loadLibrary("rustchair")
     }
 
     external fun init(ctx: Context)

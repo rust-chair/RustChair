@@ -45,7 +45,7 @@ static mut LATEST_SEED: i32 = 0;
 #[inline]
 fn get_update_temp_dir() -> PathBuf {
     let euid = unsafe { hbb_common::libc::geteuid() };
-    Path::new("/tmp").join(format!(".rustdeskupdate-{}", euid))
+    Path::new("/tmp").join(format!(".rustchairupdate-{}", euid))
 }
 
 #[inline]
@@ -305,10 +305,10 @@ fn update_daemon_agent(agent_plist_file: String, update_source_dir: String, sync
 fn correct_app_name(s: &str) -> String {
     let mut s = s.to_owned();
     if let Some(bundleid) = get_bundle_id() {
-        s = s.replace("com.carriez.rustdesk", &bundleid);
+        s = s.replace("com.rustchair.RustChair", &bundleid);
     }
-    s = s.replace("rustdesk", &crate::get_app_name().to_lowercase());
-    s = s.replace("RustDesk", &crate::get_app_name());
+    s = s.replace("rustchair", &crate::get_app_name().to_lowercase());
+    s = s.replace("RustChair", &crate::get_app_name());
     s
 }
 
@@ -931,7 +931,7 @@ pub fn extract_update_dmg(file: &str) {
 }
 
 fn extract_dmg(dmg_path: &str, target_dir: &str) -> ResultType<()> {
-    let mount_point = "/Volumes/RustDeskUpdate";
+    let mount_point = "/Volumes/RustChairUpdate";
     let target_path = Path::new(target_dir);
 
     if target_path.exists() {
