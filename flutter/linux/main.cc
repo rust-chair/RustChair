@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include "my_application.h"
 
-#define RUSTDESK_LIB_PATH "librustdesk.so"
+#define RUSTDESK_LIB_PATH "librustchair.so"
 typedef bool (*RustDeskCoreMain)();
 bool gIsConnectionManager = false;
 
@@ -42,7 +42,7 @@ bool flutter_rustdesk_core_main() {
       librustdesk = dlopen(RUSTDESK_LIB_PATH, RTLD_LAZY);
    }
    if (!librustdesk) {
-      fprintf(stderr,"Failed to load \"librustdesk.so\"\n");
+      fprintf(stderr,"Failed to load \"librustchair.so\"\n");
       char* error;
       if ((error = dlerror()) != nullptr) {
         fprintf(stderr, "%s\n", error);

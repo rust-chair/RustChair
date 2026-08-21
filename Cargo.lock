@@ -7086,7 +7086,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustdesk"
+name = "rustchair"
 version = "1.5.0"
 dependencies = [
  "android-wakelock",
