@@ -776,10 +776,7 @@ Future<bool?> _openLoginDialog() async {
         case HttpType.kAuthResTypeToken:
           if (resp.access_token != null) {
             if (storeIfAccessToken) {
-              await bind.mainSetLocalOption(
-                  key: 'access_token', value: resp.access_token!);
-              await bind.mainSetLocalOption(
-                  key: 'user_info', value: jsonEncode(resp.user ?? {}));
+              await gFFI.userModel.persistLoginResponse(resp);
             }
             if (close != null) {
               close(true);
@@ -1026,8 +1023,7 @@ Future<bool?> verificationCodeDialog(
         switch (resp.type) {
           case HttpType.kAuthResTypeToken:
             if (resp.access_token != null) {
-              await bind.mainSetLocalOption(
-                  key: 'access_token', value: resp.access_token!);
+              await gFFI.userModel.persistLoginResponse(resp);
               close(true);
               return;
             }

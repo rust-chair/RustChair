@@ -7,7 +7,7 @@ fn main() {}
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 && args[1] == "--write-plists" {
-        if let Err(e) = librustdesk::platform::write_plists() {
+        if let Err(e) = librustchair::platform::write_plists() {
             eprintln!("Failed to write plists: {}", e);
             std::process::exit(1);
         }

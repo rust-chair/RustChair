@@ -31,7 +31,7 @@ use hbb_common::{
     config::{
         self, decode_permanent_password_h1_from_storage, decode_preset_password_h1_from_storage,
         local_permanent_password_storage_is_usable_for_auth,
-        preset_permanent_password_storage_is_usable_for_auth, Config, TrustedDevice,
+        preset_permanent_password_storage_is_usable_for_auth, Config, LocalConfig, TrustedDevice,
     },
     futures::{SinkExt, StreamExt},
     get_time, get_version_number,
@@ -305,6 +305,7 @@ enum ConnAuditPrimaryAuth {
     TemporaryPassword = 2,
     PermanentPassword = 3,
     SwitchSides = 4,
+    Account = 5,
 }
 
 impl ConnAuditPrimaryAuth {
@@ -1755,7 +1756,9 @@ impl Connection {
     fn normalize_conn_audit_auth_fields(&mut self) {
         if matches!(
             self.conn_audit_primary_auth,
-            ConnAuditPrimaryAuth::Click | ConnAuditPrimaryAuth::SwitchSides
+            ConnAuditPrimaryAuth::Click
+                | ConnAuditPrimaryAuth::SwitchSides
+                | ConnAuditPrimaryAuth::Account
         ) {
             self.conn_audit_two_factor = ConnAuditTwoFactor::None;
         }
@@ -2773,6 +2776,15 @@ impl Connection {
         }
     }
 
+    fn is_account_authorized(&self) -> bool {
+        let local_device_id = LocalConfig::get_option("account_device_id");
+        !LocalConfig::get_option("access_token").is_empty()
+            && !local_device_id.is_empty()
+            && self.controlled_context.as_ref().is_some_and(|context| {
+                context.account_authorized && context.account_device_id == local_device_id
+            })
+    }
+
     async fn handle_login_request_without_validation(&mut self, lr: &LoginRequest) {
         self.lr = lr.clone();
         self.peer_argb = crate::str2color(&format!("{}{}", &lr.my_id, &lr.my_platform), 0xff);
@@ -2973,6 +2985,17 @@ impl Connection {
             let allow_logon_screen_password =
                 crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
                     && is_logon();
+
+            if self.is_account_authorized() {
+                self.set_conn_audit_primary_auth(ConnAuditPrimaryAuth::Account);
+                #[cfg(target_os = "linux")]
+                self.linux_headless_handle.wait_desktop_cm_ready().await;
+                if !self.send_logon_response_and_keep_alive().await {
+                    return false;
+                }
+                self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), self.authorized);
+                return true;
+            }
 
             if (password::approve_mode() == ApproveMode::Click && !allow_logon_screen_password)
                 || password::approve_mode() == ApproveMode::Both && !password::has_valid_password()

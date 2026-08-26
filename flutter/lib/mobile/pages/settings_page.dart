@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../common.dart';
 import '../../common/widgets/dialog.dart';
+import '../../common/widgets/account_devices.dart';
 import '../../common/widgets/login.dart';
 import '../../consts.dart';
 import '../../models/model.dart';
@@ -744,6 +745,11 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                     logOutConfirmDialog();
                   }
                 },
+              ),
+              SettingsTile(
+                title: Text(translate('My devices')),
+                leading: const Icon(Icons.devices_rounded),
+                onPressed: (context) => accountDevicesDialog(context),
               ),
             ],
           ),
