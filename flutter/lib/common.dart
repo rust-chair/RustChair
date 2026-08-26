@@ -2588,6 +2588,9 @@ connect(BuildContext context, String id,
     String? connToken,
     bool? isSharedPassword}) async {
   if (id == '') return;
+  if (gFFI.userModel.isLogin) {
+    await gFFI.userModel.ensureValidAccessToken();
+  }
   if (!isDesktop || desktopType == DesktopType.main) {
     try {
       if (Get.isRegistered<IDTextEditingController>()) {

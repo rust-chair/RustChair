@@ -25,6 +25,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../common/widgets/dialog.dart';
+import '../../common/widgets/account_devices.dart';
 import '../../common/widgets/login.dart';
 
 const double _kTabWidth = 200;
@@ -2077,7 +2078,9 @@ class _AccountState extends State<_Account> {
     return ListView(
       controller: scrollController,
       children: [
-        _Card(title: 'Account', children: [accountAction(), useInfo()]),
+        _Card(
+            title: 'Account',
+            children: [accountAction(), deviceAction(), useInfo()]),
       ],
     ).marginOnly(bottom: _kListViewBottomMargin);
   }
@@ -2143,6 +2146,13 @@ class _AccountState extends State<_Account> {
             }),
           ),
         )).marginOnly(left: 18, top: 16);
+  }
+
+  Widget deviceAction() {
+    return Obx(() => Offstage(
+          offstage: !gFFI.userModel.isLogin,
+          child: _Button('My devices', () => accountDevicesDialog(context)),
+        ));
   }
 
   Widget? _buildUserAvatar() {
