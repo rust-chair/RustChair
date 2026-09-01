@@ -158,6 +158,20 @@ pub fn translate(name: String) -> String {
     translate_locale(name, &locale)
 }
 
+fn replace_chairtop_terms(mut text: String, app_name: &str) -> String {
+    if app_name == "RustChair" {
+        for (from, to) in [
+            ("Remote Desktop", "Remote ChairTop"),
+            ("remote desktop", "remote chairtop"),
+            ("Your Desktop", "Your ChairTop"),
+            ("your desktop", "your chairtop"),
+        ] {
+            text = text.replace(from, to);
+        }
+    }
+    text
+}
+
 pub fn translate_locale(name: String, locale: &str) -> String {
     let lang = resolve_lang(
         &hbb_common::config::LocalConfig::get_option("lang"),
@@ -223,11 +237,11 @@ pub fn translate_locale(name: String, locale: &str) -> String {
             s = s.replace("{}", &value);
         }
         if !crate::is_rustdesk() {
+            let app_name = crate::get_app_name();
             if s.contains("RustDesk")
                 && !name.starts_with("upgrade_rustdesk_server_pro")
                 && name != "powered_by_me"
             {
-                let app_name = crate::get_app_name();
                 if !app_name.contains("RustDesk") {
                     s = s.replace("RustDesk", &app_name);
                 } else {
@@ -248,6 +262,7 @@ pub fn translate_locale(name: String, locale: &str) -> String {
                     }
                 }
             }
+            s = replace_chairtop_terms(s, &app_name);
         }
         s
     };
@@ -286,6 +301,28 @@ fn extract_placeholder(input: &str) -> (String, Option<String>) {
 }
 
 mod test {
+    #[test]
+    fn test_replace_chairtop_terms_only_changes_branded_ui_phrases() {
+        use super::replace_chairtop_terms as f;
+
+        assert_eq!(
+            f("Control Remote Desktop".to_owned(), "RustChair"),
+            "Control Remote ChairTop"
+        );
+        assert_eq!(
+            f("Share your desktop".to_owned(), "RustChair"),
+            "Share your chairtop"
+        );
+        assert_eq!(
+            f("XDG Desktop Portal".to_owned(), "RustChair"),
+            "XDG Desktop Portal"
+        );
+        assert_eq!(
+            f("Control Remote Desktop".to_owned(), "RustDesk"),
+            "Control Remote Desktop"
+        );
+    }
+
     #[test]
     fn test_extract_placeholders() {
         use super::extract_placeholder as f;

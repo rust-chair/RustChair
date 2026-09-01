@@ -12,7 +12,7 @@ Provides:   libdesktop_drop_plugin.so()(64bit), libdesktop_multi_window_plugin.s
 # https://docs.fedoraproject.org/en-US/packaging-guidelines/Scriptlets/
 
 %description
-The best open-source remote desktop client software, written in Rust.
+The best open-source remote chairtop client software, written in Rust.
 
 %prep
 # we have no source, so nothing here

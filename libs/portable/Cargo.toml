@@ -2,7 +2,7 @@
 name = "rustdesk-portable-packer"
 version = "1.4.9"
 edition = "2021"
-description = "RustChair Remote Desktop"
+description = "RustChair Remote ChairTop"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -29,7 +29,7 @@ native-windows-gui = {version = "1.0", default-features = false, features = ["an
 LegalCopyright = "Copyright © 2026 Purslane Tech Pte. Ltd. All rights reserved."
 ProductName = "RustChair"
 OriginalFilename = "RustChair.exe"
-FileDescription = "RustChair Remote Desktop"
+FileDescription = "RustChair Remote ChairTop"
 #ProductVersion = ""
 
 [target.'cfg(target_os="windows")'.build-dependencies]
