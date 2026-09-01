@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=RustDesk
-GenericName=Remote ChairTop
-Comment=Remote ChairTop
+GenericName=Remote Chairtop
+Comment=Remote Chairtop
 Exec=rustdesk %u
 Icon=rustdesk
 Terminal=false

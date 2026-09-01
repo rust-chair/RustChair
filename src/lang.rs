@@ -161,10 +161,9 @@ pub fn translate(name: String) -> String {
 fn replace_chairtop_terms(mut text: String, app_name: &str) -> String {
     if app_name == "RustChair" {
         for (from, to) in [
-            ("Remote Desktop", "Remote ChairTop"),
-            ("remote desktop", "remote chairtop"),
-            ("Your Desktop", "Your ChairTop"),
-            ("your desktop", "your chairtop"),
+            ("Desktop", "Chairtop"),
+            ("desktop", "chairtop"),
+            ("桌面", "椅面"),
         ] {
             text = text.replace(from, to);
         }
@@ -302,12 +301,12 @@ fn extract_placeholder(input: &str) -> (String, Option<String>) {
 
 mod test {
     #[test]
-    fn test_replace_chairtop_terms_only_changes_branded_ui_phrases() {
+    fn test_replace_chairtop_terms_changes_all_visible_desktop_copy() {
         use super::replace_chairtop_terms as f;
 
         assert_eq!(
             f("Control Remote Desktop".to_owned(), "RustChair"),
-            "Control Remote ChairTop"
+            "Control Remote Chairtop"
         );
         assert_eq!(
             f("Share your desktop".to_owned(), "RustChair"),
@@ -315,7 +314,11 @@ mod test {
         );
         assert_eq!(
             f("XDG Desktop Portal".to_owned(), "RustChair"),
-            "XDG Desktop Portal"
+            "XDG Chairtop Portal"
+        );
+        assert_eq!(
+            f("你的桌面".to_owned(), "RustChair"),
+            "你的椅面"
         );
         assert_eq!(
             f("Control Remote Desktop".to_owned(), "RustDesk"),

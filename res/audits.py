@@ -42,7 +42,7 @@ def parse_local_time_to_utc_string(time_str):
 def get_connection_type_name(conn_type):
     """Convert connection type number to readable name"""
     type_map = {
-        0: "Remote ChairTop",
+        0: "Remote Chairtop",
         1: "File Transfer",
         2: "Port Transfer",
         3: "View Camera",
@@ -307,7 +307,7 @@ def main():
     # Audit filters (simplified)
     parser.add_argument("--remote", help="Remote peer ID filter (for conn/file audits)")
     parser.add_argument("--device", help="Device ID filter (for alarm audits)")
-    parser.add_argument("--conn-type", type=int, help="Connection type filter (for conn audits only): 0=Remote ChairTop, 1=File Transfer, 2=Port Transfer, 3=View Camera, 4=Terminal")
+    parser.add_argument("--conn-type", type=int, help="Connection type filter (for conn audits only): 0=Remote Chairtop, 1=File Transfer, 2=Port Transfer, 3=View Camera, 4=Terminal")
     parser.add_argument("--operator", help="Operator filter (for console audits only)")
 
     args = parser.parse_args()

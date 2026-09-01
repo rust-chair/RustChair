@@ -5,7 +5,7 @@ RustChair is a derivative build of RustDesk 1.4.9. The RustDesk license and upst
 | Surface | RustChair value |
 | --- | --- |
 | Product name | `RustChair` |
-| User-facing remote desktop label | `ChairTop` |
+| User-facing desktop concept | `Chairtop` / `椅面` |
 | Rust executable/package | `rustchair` |
 | Embedded native library | `librustchair` |
 | Apple bundle identifier | `com.rustchair.RustChair` |
