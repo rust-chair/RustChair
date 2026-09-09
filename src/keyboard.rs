@@ -734,13 +734,27 @@ fn take_remote_keys() -> HashMap<Key, Event> {
     std::mem::take(&mut *to_release)
 }
 
+#[inline]
+fn needs_forced_modifier_release(key: Key) -> bool {
+    matches!(
+        key,
+        Key::Alt
+            | Key::AltGr
+            | Key::ControlLeft
+            | Key::ControlRight
+            | Key::MetaLeft
+            | Key::MetaRight
+    )
+}
+
 fn release_remote_keys_for_events(keyboard_mode: &str, to_release: HashMap<Key, Event>) {
     for (key, mut event) in to_release.into_iter() {
         event.event_type = EventType::KeyRelease(key);
         client::process_event(keyboard_mode, &event, None);
-        // If Alt or AltGr is pressed, we need to send another key stoke to release it.
-        // Because the controlled side may hold the alt state, if local window is switched by [Alt + Tab].
-        if key == Key::Alt || key == Key::AltGr {
+        // Some platforms can keep a modifier pressed when focus changes before
+        // the physical key-up is observed. Replaying a complete stroke leaves
+        // the controlled side in a deterministic released state.
+        if needs_forced_modifier_release(key) {
             event.event_type = EventType::KeyPress(key);
             client::process_event(keyboard_mode, &event, None);
             event.event_type = EventType::KeyRelease(key);
@@ -1637,5 +1651,31 @@ pub mod input_source {
                 CONFIG_INPUT_SOURCE_2_TIP.to_string(),
             ),
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn force_releases_shortcut_modifiers_after_focus_loss() {
+        for key in [
+            Key::Alt,
+            Key::AltGr,
+            Key::ControlLeft,
+            Key::ControlRight,
+            Key::MetaLeft,
+            Key::MetaRight,
+        ] {
+            assert!(needs_forced_modifier_release(key), "{key:?}");
+        }
+    }
+
+    #[test]
+    fn does_not_repress_regular_keys_during_focus_loss() {
+        for key in [Key::Tab, Key::KeyA, Key::ShiftLeft, Key::ShiftRight] {
+            assert!(!needs_forced_modifier_release(key), "{key:?}");
+        }
     }
 }

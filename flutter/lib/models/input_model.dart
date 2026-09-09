@@ -311,6 +311,55 @@ class ToReleaseKeys {
     lastSuperKeyEvent = null;
   }
 
+  updateKeyDown(LogicalKeyboardKey logicalKey, KeyDownEvent event) {
+    final keyUpEvent = KeyUpEvent(
+      physicalKey: event.physicalKey,
+      logicalKey: event.logicalKey,
+      timeStamp: event.timeStamp,
+    );
+    if (logicalKey == LogicalKeyboardKey.altLeft) {
+      lastLAltKeyEvent = keyUpEvent;
+    } else if (logicalKey == LogicalKeyboardKey.altRight) {
+      lastRAltKeyEvent = keyUpEvent;
+    } else if (logicalKey == LogicalKeyboardKey.controlLeft) {
+      lastLCtrlKeyEvent = keyUpEvent;
+    } else if (logicalKey == LogicalKeyboardKey.controlRight) {
+      lastRCtrlKeyEvent = keyUpEvent;
+    } else if (logicalKey == LogicalKeyboardKey.shiftLeft) {
+      lastLShiftKeyEvent = keyUpEvent;
+    } else if (logicalKey == LogicalKeyboardKey.shiftRight) {
+      lastRShiftKeyEvent = keyUpEvent;
+    } else if (logicalKey == LogicalKeyboardKey.metaLeft) {
+      lastLCommandKeyEvent = keyUpEvent;
+    } else if (logicalKey == LogicalKeyboardKey.metaRight) {
+      lastRCommandKeyEvent = keyUpEvent;
+    } else if (logicalKey == LogicalKeyboardKey.superKey) {
+      lastSuperKeyEvent = keyUpEvent;
+    }
+  }
+
+  updateKeyUp(LogicalKeyboardKey logicalKey) {
+    if (logicalKey == LogicalKeyboardKey.altLeft) {
+      lastLAltKeyEvent = null;
+    } else if (logicalKey == LogicalKeyboardKey.altRight) {
+      lastRAltKeyEvent = null;
+    } else if (logicalKey == LogicalKeyboardKey.controlLeft) {
+      lastLCtrlKeyEvent = null;
+    } else if (logicalKey == LogicalKeyboardKey.controlRight) {
+      lastRCtrlKeyEvent = null;
+    } else if (logicalKey == LogicalKeyboardKey.shiftLeft) {
+      lastLShiftKeyEvent = null;
+    } else if (logicalKey == LogicalKeyboardKey.shiftRight) {
+      lastRShiftKeyEvent = null;
+    } else if (logicalKey == LogicalKeyboardKey.metaLeft) {
+      lastLCommandKeyEvent = null;
+    } else if (logicalKey == LogicalKeyboardKey.metaRight) {
+      lastRCommandKeyEvent = null;
+    } else if (logicalKey == LogicalKeyboardKey.superKey) {
+      lastSuperKeyEvent = null;
+    }
+  }
+
   release(KeyEventResult Function(KeyEvent e) handleKeyEvent) {
     for (final key in [
       lastLShiftKeyEvent,
@@ -622,88 +671,67 @@ class InputModel {
     _trackpadSpeedInner = _trackpadSpeed / 100.0;
   }
 
-  void handleKeyDownEventModifiers(KeyEvent e) {
-    KeyUpEvent upEvent(e) => KeyUpEvent(
-          physicalKey: e.physicalKey,
-          logicalKey: e.logicalKey,
-          timeStamp: e.timeStamp,
-        );
+  void handleKeyDownEventModifiers(KeyDownEvent e) {
+    toReleaseKeys.updateKeyDown(e.logicalKey, e);
     if (e.logicalKey == LogicalKeyboardKey.altLeft) {
       if (!alt) {
         alt = true;
       }
-      toReleaseKeys.lastLAltKeyEvent = upEvent(e);
     } else if (e.logicalKey == LogicalKeyboardKey.altRight) {
       if (!alt) {
         alt = true;
       }
-      toReleaseKeys.lastLAltKeyEvent = upEvent(e);
     } else if (e.logicalKey == LogicalKeyboardKey.controlLeft) {
       if (!ctrl) {
         ctrl = true;
       }
-      toReleaseKeys.lastLCtrlKeyEvent = upEvent(e);
     } else if (e.logicalKey == LogicalKeyboardKey.controlRight) {
       if (!ctrl) {
         ctrl = true;
       }
-      toReleaseKeys.lastRCtrlKeyEvent = upEvent(e);
     } else if (e.logicalKey == LogicalKeyboardKey.shiftLeft) {
       if (!shift) {
         shift = true;
       }
-      toReleaseKeys.lastLShiftKeyEvent = upEvent(e);
     } else if (e.logicalKey == LogicalKeyboardKey.shiftRight) {
       if (!shift) {
         shift = true;
       }
-      toReleaseKeys.lastRShiftKeyEvent = upEvent(e);
     } else if (e.logicalKey == LogicalKeyboardKey.metaLeft) {
       if (!command) {
         command = true;
       }
-      toReleaseKeys.lastLCommandKeyEvent = upEvent(e);
     } else if (e.logicalKey == LogicalKeyboardKey.metaRight) {
       if (!command) {
         command = true;
       }
-      toReleaseKeys.lastRCommandKeyEvent = upEvent(e);
     } else if (e.logicalKey == LogicalKeyboardKey.superKey) {
       if (!command) {
         command = true;
       }
-      toReleaseKeys.lastSuperKeyEvent = upEvent(e);
     }
   }
 
   void handleKeyUpEventModifiers(KeyEvent e) {
+    toReleaseKeys.updateKeyUp(e.logicalKey);
     if (e.logicalKey == LogicalKeyboardKey.altLeft) {
       alt = false;
-      toReleaseKeys.lastLAltKeyEvent = null;
     } else if (e.logicalKey == LogicalKeyboardKey.altRight) {
       alt = false;
-      toReleaseKeys.lastRAltKeyEvent = null;
     } else if (e.logicalKey == LogicalKeyboardKey.controlLeft) {
       ctrl = false;
-      toReleaseKeys.lastLCtrlKeyEvent = null;
     } else if (e.logicalKey == LogicalKeyboardKey.controlRight) {
       ctrl = false;
-      toReleaseKeys.lastRCtrlKeyEvent = null;
     } else if (e.logicalKey == LogicalKeyboardKey.shiftLeft) {
       shift = false;
-      toReleaseKeys.lastLShiftKeyEvent = null;
     } else if (e.logicalKey == LogicalKeyboardKey.shiftRight) {
       shift = false;
-      toReleaseKeys.lastRShiftKeyEvent = null;
     } else if (e.logicalKey == LogicalKeyboardKey.metaLeft) {
       command = false;
-      toReleaseKeys.lastLCommandKeyEvent = null;
     } else if (e.logicalKey == LogicalKeyboardKey.metaRight) {
       command = false;
-      toReleaseKeys.lastRCommandKeyEvent = null;
     } else if (e.logicalKey == LogicalKeyboardKey.superKey) {
       command = false;
-      toReleaseKeys.lastSuperKeyEvent = null;
     }
   }
 
@@ -1233,9 +1261,16 @@ class InputModel {
   void exitRelativeMouseModeWithKeyRelease() {
     if (!_relativeMouse.enabled.value) return;
 
-    // First, send release events for all modifier keys to the remote.
-    // This ensures the remote doesn't have stuck modifier keys after exiting.
-    // Use press: false, down: false to send key-up events without modifiers attached.
+    releaseRemoteModifiers();
+
+    // Now exit relative mouse mode
+    _relativeMouse.setRelativeMouseMode(false);
+  }
+
+  /// Release every modifier on the controlled side without relying on cached
+  /// local key state. Focus changes can hide a physical key-up event from the
+  /// controller, so this operation is intentionally idempotent.
+  void releaseRemoteModifiers() {
     final modifiersToRelease = [
       'Control_L',
       'Control_R',
@@ -1260,11 +1295,9 @@ class InputModel {
       );
     }
 
-    // Reset local modifier state
     resetModifiers();
-
-    // Now exit relative mouse mode
-    _relativeMouse.setRelativeMouseMode(false);
+    toReleaseKeys.reset();
+    toReleaseRawKeys.reset();
   }
 
   void disposeRelativeMouseMode() {
