@@ -242,6 +242,14 @@ class _RemotePageState extends State<RemotePage>
       // unfocus the primary-focus when the whole window is lost focus,
       // and let OS to handle events instead.
       _rawKeyFocusNode.unfocus();
+      // Do not rely only on the FocusNode callback: Windows may complete an
+      // Alt+Tab focus switch before Flutter reports the matching key-up.
+      // Explicit key-up events clear the controlled side even if local
+      // modifier tracking is already stale.
+      _ffi.inputModel.releaseRemoteModifiers();
+      // This path is idempotent and also releases keys held by the native
+      // grab loop.
+      _ffi.inputModel.enterOrLeave(false);
     }
     stateGlobal.isFocused.value = false;
 
