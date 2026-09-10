@@ -52,14 +52,20 @@ use crate::keyboard;
 use crate::{client::Data, client::Interface};
 
 const CHANGE_RESOLUTION_VALID_TIMEOUT_SECS: u64 = 15;
+const OPTION_MODIFIER_KEYBOARD_LAYOUT: &str = "modifier-keyboard-layout";
+const MODIFIER_KEYBOARD_LAYOUT_MAC: &str = "mac";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ModifierSwapMode {
-    ControlCommand,
-    WindowsToMacPhysical,
+enum ModifierKeyboardLayout {
+    Windows,
+    Mac,
 }
 
-fn modifier_swap_mode(local_platform: &str, peer_platform: &str) -> ModifierSwapMode {
+fn modifier_keyboard_layout(
+    local_platform: &str,
+    peer_platform: &str,
+    configured_layout: &str,
+) -> ModifierKeyboardLayout {
     let normalize = |platform: &str| {
         platform
             .chars()
@@ -67,52 +73,87 @@ fn modifier_swap_mode(local_platform: &str, peer_platform: &str) -> ModifierSwap
             .collect::<String>()
             .to_lowercase()
     };
-    if normalize(local_platform) == "windows" && normalize(peer_platform) == "macos" {
-        ModifierSwapMode::WindowsToMacPhysical
+    if normalize(local_platform) == "windows"
+        && normalize(peer_platform) == "macos"
+        && configured_layout == MODIFIER_KEYBOARD_LAYOUT_MAC
+    {
+        ModifierKeyboardLayout::Mac
     } else {
-        ModifierSwapMode::ControlCommand
+        ModifierKeyboardLayout::Windows
     }
 }
 
-fn swap_control_key(key: ControlKey, mode: ModifierSwapMode) -> ControlKey {
-    match mode {
-        ModifierSwapMode::WindowsToMacPhysical => match key {
-            ControlKey::Control => ControlKey::Meta,
-            ControlKey::RControl => ControlKey::RWin,
+fn map_control_key_for_layout(key: ControlKey, layout: ModifierKeyboardLayout) -> ControlKey {
+    if layout == ModifierKeyboardLayout::Mac {
+        match key {
             ControlKey::Meta => ControlKey::Alt,
             ControlKey::RWin => ControlKey::RAlt,
-            ControlKey::Alt => ControlKey::Control,
-            ControlKey::RAlt => ControlKey::RControl,
+            ControlKey::Alt => ControlKey::Meta,
+            ControlKey::RAlt => ControlKey::RWin,
             _ => key,
-        },
-        ModifierSwapMode::ControlCommand => match key {
-            ControlKey::Control => ControlKey::Meta,
-            ControlKey::RControl => ControlKey::Meta,
-            ControlKey::Meta => ControlKey::Control,
-            ControlKey::RWin => ControlKey::Control,
-            _ => key,
-        },
+        }
+    } else {
+        key
     }
 }
 
-fn swap_rdev_key(key: rdev::Key, mode: ModifierSwapMode) -> rdev::Key {
-    match mode {
-        ModifierSwapMode::WindowsToMacPhysical => match key {
-            rdev::Key::ControlLeft => rdev::Key::MetaLeft,
-            rdev::Key::ControlRight => rdev::Key::MetaRight,
+fn swap_control_command_key(key: ControlKey) -> ControlKey {
+    match key {
+        ControlKey::Control => ControlKey::Meta,
+        ControlKey::RControl => ControlKey::RWin,
+        ControlKey::Meta => ControlKey::Control,
+        ControlKey::RWin => ControlKey::RControl,
+        _ => key,
+    }
+}
+
+fn map_rdev_key_for_layout(key: rdev::Key, layout: ModifierKeyboardLayout) -> rdev::Key {
+    if layout == ModifierKeyboardLayout::Mac {
+        match key {
             rdev::Key::MetaLeft => rdev::Key::Alt,
             rdev::Key::MetaRight => rdev::Key::AltGr,
-            rdev::Key::Alt => rdev::Key::ControlLeft,
-            rdev::Key::AltGr => rdev::Key::ControlRight,
+            rdev::Key::Alt => rdev::Key::MetaLeft,
+            rdev::Key::AltGr => rdev::Key::MetaRight,
             _ => key,
-        },
-        ModifierSwapMode::ControlCommand => match key {
-            rdev::Key::ControlLeft => rdev::Key::MetaLeft,
-            rdev::Key::ControlRight => rdev::Key::MetaLeft,
-            rdev::Key::MetaLeft => rdev::Key::ControlLeft,
-            rdev::Key::MetaRight => rdev::Key::ControlLeft,
-            _ => key,
-        },
+        }
+    } else {
+        key
+    }
+}
+
+fn swap_rdev_control_command_key(key: rdev::Key) -> rdev::Key {
+    match key {
+        rdev::Key::ControlLeft => rdev::Key::MetaLeft,
+        rdev::Key::ControlRight => rdev::Key::MetaRight,
+        rdev::Key::MetaLeft => rdev::Key::ControlLeft,
+        rdev::Key::MetaRight => rdev::Key::ControlRight,
+        _ => key,
+    }
+}
+
+fn map_control_key(
+    key: ControlKey,
+    layout: ModifierKeyboardLayout,
+    swap_control_command: bool,
+) -> ControlKey {
+    let key = map_control_key_for_layout(key, layout);
+    if swap_control_command {
+        swap_control_command_key(key)
+    } else {
+        key
+    }
+}
+
+fn map_rdev_key(
+    key: rdev::Key,
+    layout: ModifierKeyboardLayout,
+    swap_control_command: bool,
+) -> rdev::Key {
+    let key = map_rdev_key_for_layout(key, layout);
+    if swap_control_command {
+        swap_rdev_control_command_key(key)
+    } else {
+        key
     }
 }
 
@@ -752,18 +793,22 @@ impl<T: InvokeUiSession> Session<T> {
 
     pub fn swap_modifier_key(&self, msg: &mut KeyEvent) {
         let allow_swap_key = self.get_toggle_option("allow_swap_key".to_string());
-        if allow_swap_key {
-            let mode = modifier_swap_mode(&whoami::platform().to_string(), &self.peer_platform());
+        let layout = modifier_keyboard_layout(
+            &whoami::platform().to_string(),
+            &self.peer_platform(),
+            &self.get_option(OPTION_MODIFIER_KEYBOARD_LAYOUT.to_string()),
+        );
+        if allow_swap_key || layout == ModifierKeyboardLayout::Mac {
             if let Some(key_event::Union::ControlKey(ck)) = msg.union {
                 let ck = ck.enum_value_or_default();
-                msg.set_control_key(swap_control_key(ck, mode));
+                msg.set_control_key(map_control_key(ck, layout, allow_swap_key));
             }
             msg.modifiers = msg
                 .modifiers
                 .iter()
                 .map(|ck| {
                     let ck = ck.enum_value_or_default();
-                    let ck = swap_control_key(ck, mode);
+                    let ck = map_control_key(ck, layout, allow_swap_key);
                     hbb_common::protobuf::EnumOrUnknown::new(ck)
                 })
                 .collect();
@@ -787,12 +832,12 @@ impl<T: InvokeUiSession> Session<T> {
                     }
                     "macos" => {
                         let key = rdev::macos_key_from_code(code as _);
-                        let key = swap_rdev_key(key, mode);
+                        let key = map_rdev_key(key, layout, allow_swap_key);
                         rdev::macos_keycode_from_key(key).unwrap_or_default() as _
                     }
                     _ => {
                         let key = rdev::linux_key_from_code(code);
-                        let key = swap_rdev_key(key, mode);
+                        let key = map_rdev_key(key, layout, allow_swap_key);
                         rdev::linux_keycode_from_key(key).unwrap_or_default()
                     }
                 };
@@ -1949,14 +1994,18 @@ impl<T: InvokeUiSession> Interface for Session<T> {
 
     fn swap_modifier_mouse(&self, msg: &mut base::protos::message::MouseEvent) {
         let allow_swap_key = self.get_toggle_option("allow_swap_key".to_string());
-        if allow_swap_key {
-            let mode = modifier_swap_mode(&whoami::platform().to_string(), &self.peer_platform());
+        let layout = modifier_keyboard_layout(
+            &whoami::platform().to_string(),
+            &self.peer_platform(),
+            &self.get_option(OPTION_MODIFIER_KEYBOARD_LAYOUT.to_string()),
+        );
+        if allow_swap_key || layout == ModifierKeyboardLayout::Mac {
             msg.modifiers = msg
                 .modifiers
                 .iter()
                 .map(|ck| {
                     let ck = ck.enum_value_or_default();
-                    let ck = swap_control_key(ck, mode);
+                    let ck = map_control_key(ck, layout, allow_swap_key);
                     hbb_common::protobuf::EnumOrUnknown::new(ck)
                 })
                 .collect();
@@ -2114,8 +2163,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn windows_to_mac_swap_follows_modifier_positions() {
-        let mode = modifier_swap_mode("Windows", "Mac OS");
+    fn mac_layout_swaps_windows_and_alt_positions() {
+        let layout = modifier_keyboard_layout("Windows", "Mac OS", "mac");
+        for (source, target) in [
+            (ControlKey::Control, ControlKey::Control),
+            (ControlKey::Meta, ControlKey::Alt),
+            (ControlKey::Alt, ControlKey::Meta),
+            (ControlKey::RControl, ControlKey::RControl),
+            (ControlKey::RWin, ControlKey::RAlt),
+            (ControlKey::RAlt, ControlKey::RWin),
+        ] {
+            assert_eq!(map_control_key(source, layout, false), target);
+        }
+    }
+
+    #[test]
+    fn control_command_swap_is_independent_from_layout() {
+        let windows_layout = modifier_keyboard_layout("Windows", "Mac OS", "windows");
+        let mac_layout = modifier_keyboard_layout("Windows", "macOS", "mac");
+
+        for (source, target) in [
+            (ControlKey::Control, ControlKey::Meta),
+            (ControlKey::Meta, ControlKey::Control),
+            (ControlKey::Alt, ControlKey::Alt),
+            (ControlKey::RControl, ControlKey::RWin),
+            (ControlKey::RWin, ControlKey::RControl),
+            (ControlKey::RAlt, ControlKey::RAlt),
+        ] {
+            assert_eq!(map_control_key(source, windows_layout, true), target);
+        }
+
         for (source, target) in [
             (ControlKey::Control, ControlKey::Meta),
             (ControlKey::Meta, ControlKey::Alt),
@@ -2124,13 +2201,9 @@ mod tests {
             (ControlKey::RWin, ControlKey::RAlt),
             (ControlKey::RAlt, ControlKey::RControl),
         ] {
-            assert_eq!(swap_control_key(source, mode), target);
+            assert_eq!(map_control_key(source, mac_layout, true), target);
         }
-    }
 
-    #[test]
-    fn windows_to_mac_map_mode_follows_modifier_positions() {
-        let mode = modifier_swap_mode("Windows", "macOS");
         for (source, target) in [
             (rdev::Key::ControlLeft, rdev::Key::MetaLeft),
             (rdev::Key::MetaLeft, rdev::Key::Alt),
@@ -2139,7 +2212,7 @@ mod tests {
             (rdev::Key::MetaRight, rdev::Key::AltGr),
             (rdev::Key::AltGr, rdev::Key::ControlRight),
         ] {
-            assert_eq!(swap_rdev_key(source, mode), target);
+            assert_eq!(map_rdev_key(source, mac_layout, true), target);
         }
     }
 }

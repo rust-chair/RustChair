@@ -2554,6 +2554,7 @@ class _KeyboardMenu extends StatelessWidget {
         menuChildrenGetter: (_) => [
               keyboardMode(),
               localKeyboardType(),
+              modifierKeyboardLayout(),
               inputSource(),
               Divider(),
               viewMode(),
@@ -2666,6 +2667,47 @@ class _KeyboardMenu extends StatelessWidget {
         )
       ],
     );
+  }
+
+  modifierKeyboardLayout() {
+    if (!isWindows || pi.platform != kPeerPlatformMacOS) {
+      return Offstage();
+    }
+    final enabled = !ffi.ffiModel.viewOnly;
+    return futureBuilder(future: () async {
+      final saved = await bind.sessionGetPeerOption(
+          sessionId: ffi.sessionId, name: kOptionModifierKeyboardLayout);
+      return saved == kModifierKeyboardLayoutMac
+          ? kModifierKeyboardLayoutMac
+          : kModifierKeyboardLayoutWindows;
+    }(), hasData: (data) {
+      final groupValue = data as String;
+      onChanged(String? value) async {
+        if (value == null) return;
+        await bind.sessionPeerOption(
+            sessionId: ffi.sessionId,
+            name: kOptionModifierKeyboardLayout,
+            value: value);
+      }
+
+      return Column(children: [
+        Divider(),
+        RdoMenuButton<String>(
+          child: Text('Windows: Ctrl / Win / Alt'),
+          value: kModifierKeyboardLayoutWindows,
+          groupValue: groupValue,
+          onChanged: enabled ? onChanged : null,
+          ffi: ffi,
+        ),
+        RdoMenuButton<String>(
+          child: Text('Mac OS: Control / Option / Command'),
+          value: kModifierKeyboardLayoutMac,
+          groupValue: groupValue,
+          onChanged: enabled ? onChanged : null,
+          ffi: ffi,
+        ),
+      ]);
+    });
   }
 
   inputSource() {
