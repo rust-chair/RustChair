@@ -53,6 +53,69 @@ use crate::{client::Data, client::Interface};
 
 const CHANGE_RESOLUTION_VALID_TIMEOUT_SECS: u64 = 15;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ModifierSwapMode {
+    ControlCommand,
+    WindowsToMacPhysical,
+}
+
+fn modifier_swap_mode(local_platform: &str, peer_platform: &str) -> ModifierSwapMode {
+    let normalize = |platform: &str| {
+        platform
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+            .to_lowercase()
+    };
+    if normalize(local_platform) == "windows" && normalize(peer_platform) == "macos" {
+        ModifierSwapMode::WindowsToMacPhysical
+    } else {
+        ModifierSwapMode::ControlCommand
+    }
+}
+
+fn swap_control_key(key: ControlKey, mode: ModifierSwapMode) -> ControlKey {
+    match mode {
+        ModifierSwapMode::WindowsToMacPhysical => match key {
+            ControlKey::Control => ControlKey::Meta,
+            ControlKey::RControl => ControlKey::RWin,
+            ControlKey::Meta => ControlKey::Alt,
+            ControlKey::RWin => ControlKey::RAlt,
+            ControlKey::Alt => ControlKey::Control,
+            ControlKey::RAlt => ControlKey::RControl,
+            _ => key,
+        },
+        ModifierSwapMode::ControlCommand => match key {
+            ControlKey::Control => ControlKey::Meta,
+            ControlKey::RControl => ControlKey::Meta,
+            ControlKey::Meta => ControlKey::Control,
+            ControlKey::RWin => ControlKey::Control,
+            _ => key,
+        },
+    }
+}
+
+fn swap_rdev_key(key: rdev::Key, mode: ModifierSwapMode) -> rdev::Key {
+    match mode {
+        ModifierSwapMode::WindowsToMacPhysical => match key {
+            rdev::Key::ControlLeft => rdev::Key::MetaLeft,
+            rdev::Key::ControlRight => rdev::Key::MetaRight,
+            rdev::Key::MetaLeft => rdev::Key::Alt,
+            rdev::Key::MetaRight => rdev::Key::AltGr,
+            rdev::Key::Alt => rdev::Key::ControlLeft,
+            rdev::Key::AltGr => rdev::Key::ControlRight,
+            _ => key,
+        },
+        ModifierSwapMode::ControlCommand => match key {
+            rdev::Key::ControlLeft => rdev::Key::MetaLeft,
+            rdev::Key::ControlRight => rdev::Key::MetaLeft,
+            rdev::Key::MetaLeft => rdev::Key::ControlLeft,
+            rdev::Key::MetaRight => rdev::Key::ControlLeft,
+            _ => key,
+        },
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct Session<T: InvokeUiSession> {
     pub password: String,
@@ -690,29 +753,17 @@ impl<T: InvokeUiSession> Session<T> {
     pub fn swap_modifier_key(&self, msg: &mut KeyEvent) {
         let allow_swap_key = self.get_toggle_option("allow_swap_key".to_string());
         if allow_swap_key {
+            let mode = modifier_swap_mode(&whoami::platform().to_string(), &self.peer_platform());
             if let Some(key_event::Union::ControlKey(ck)) = msg.union {
                 let ck = ck.enum_value_or_default();
-                let ck = match ck {
-                    ControlKey::Control => ControlKey::Meta,
-                    ControlKey::Meta => ControlKey::Control,
-                    ControlKey::RControl => ControlKey::Meta,
-                    ControlKey::RWin => ControlKey::Control,
-                    _ => ck,
-                };
-                msg.set_control_key(ck);
+                msg.set_control_key(swap_control_key(ck, mode));
             }
             msg.modifiers = msg
                 .modifiers
                 .iter()
                 .map(|ck| {
                     let ck = ck.enum_value_or_default();
-                    let ck = match ck {
-                        ControlKey::Control => ControlKey::Meta,
-                        ControlKey::Meta => ControlKey::Control,
-                        ControlKey::RControl => ControlKey::Meta,
-                        ControlKey::RWin => ControlKey::Control,
-                        _ => ck,
-                    };
+                    let ck = swap_control_key(ck, mode);
                     hbb_common::protobuf::EnumOrUnknown::new(ck)
                 })
                 .collect();
@@ -736,24 +787,12 @@ impl<T: InvokeUiSession> Session<T> {
                     }
                     "macos" => {
                         let key = rdev::macos_key_from_code(code as _);
-                        let key = match key {
-                            rdev::Key::ControlLeft => rdev::Key::MetaLeft,
-                            rdev::Key::MetaLeft => rdev::Key::ControlLeft,
-                            rdev::Key::ControlRight => rdev::Key::MetaLeft,
-                            rdev::Key::MetaRight => rdev::Key::ControlLeft,
-                            _ => key,
-                        };
+                        let key = swap_rdev_key(key, mode);
                         rdev::macos_keycode_from_key(key).unwrap_or_default() as _
                     }
                     _ => {
                         let key = rdev::linux_key_from_code(code);
-                        let key = match key {
-                            rdev::Key::ControlLeft => rdev::Key::MetaLeft,
-                            rdev::Key::MetaLeft => rdev::Key::ControlLeft,
-                            rdev::Key::ControlRight => rdev::Key::MetaLeft,
-                            rdev::Key::MetaRight => rdev::Key::ControlLeft,
-                            _ => key,
-                        };
+                        let key = swap_rdev_key(key, mode);
                         rdev::linux_keycode_from_key(key).unwrap_or_default()
                     }
                 };
@@ -1911,18 +1950,13 @@ impl<T: InvokeUiSession> Interface for Session<T> {
     fn swap_modifier_mouse(&self, msg: &mut base::protos::message::MouseEvent) {
         let allow_swap_key = self.get_toggle_option("allow_swap_key".to_string());
         if allow_swap_key {
+            let mode = modifier_swap_mode(&whoami::platform().to_string(), &self.peer_platform());
             msg.modifiers = msg
                 .modifiers
                 .iter()
                 .map(|ck| {
                     let ck = ck.enum_value_or_default();
-                    let ck = match ck {
-                        ControlKey::Control => ControlKey::Meta,
-                        ControlKey::Meta => ControlKey::Control,
-                        ControlKey::RControl => ControlKey::Meta,
-                        ControlKey::RWin => ControlKey::Control,
-                        _ => ck,
-                    };
+                    let ck = swap_control_key(ck, mode);
                     hbb_common::protobuf::EnumOrUnknown::new(ck)
                 })
                 .collect();
@@ -2073,4 +2107,39 @@ async fn start_one_port_forward<T: InvokeUiSession>(
 async fn send_note(url: String, id: String, sid: u64, note: String) {
     let body = serde_json::json!({ "id": id, "session_id": sid, "note": note });
     allow_err!(crate::post_request(url, body.to_string(), "").await);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn windows_to_mac_swap_follows_modifier_positions() {
+        let mode = modifier_swap_mode("Windows", "Mac OS");
+        for (source, target) in [
+            (ControlKey::Control, ControlKey::Meta),
+            (ControlKey::Meta, ControlKey::Alt),
+            (ControlKey::Alt, ControlKey::Control),
+            (ControlKey::RControl, ControlKey::RWin),
+            (ControlKey::RWin, ControlKey::RAlt),
+            (ControlKey::RAlt, ControlKey::RControl),
+        ] {
+            assert_eq!(swap_control_key(source, mode), target);
+        }
+    }
+
+    #[test]
+    fn windows_to_mac_map_mode_follows_modifier_positions() {
+        let mode = modifier_swap_mode("Windows", "macOS");
+        for (source, target) in [
+            (rdev::Key::ControlLeft, rdev::Key::MetaLeft),
+            (rdev::Key::MetaLeft, rdev::Key::Alt),
+            (rdev::Key::Alt, rdev::Key::ControlLeft),
+            (rdev::Key::ControlRight, rdev::Key::MetaRight),
+            (rdev::Key::MetaRight, rdev::Key::AltGr),
+            (rdev::Key::AltGr, rdev::Key::ControlRight),
+        ] {
+            assert_eq!(swap_rdev_key(source, mode), target);
+        }
+    }
 }
