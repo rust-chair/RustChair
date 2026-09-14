@@ -937,6 +937,21 @@ fn update_modifiers_state(event: &Event) {
     };
 }
 
+fn add_map_modifier_snapshot(
+    keyboard_mode: KeyboardMode,
+    peer: &str,
+    key_events: &mut [KeyEvent],
+    modifiers: (bool, bool, bool, bool),
+) {
+    if keyboard_mode != KeyboardMode::Map || peer != OS_LOWER_MACOS {
+        return;
+    }
+    let (alt, ctrl, shift, command) = modifiers;
+    for key_event in key_events {
+        client::legacy_modifiers(key_event, alt, ctrl, shift, command);
+    }
+}
+
 pub fn event_to_key_events(
     mut peer: String,
     event: &Event,
@@ -975,6 +990,16 @@ pub fn event_to_key_events(
         }
     };
 
+    // Map mode normally needs only the physical key position. macOS also uses
+    // the current modifier snapshot to recover immediately if CoreGraphics
+    // misses a modifier release while processing a shortcut sequence.
+    add_map_modifier_snapshot(
+        keyboard_mode,
+        peer.as_str(),
+        &mut key_events,
+        client::get_modifiers_state(false, false, false, false),
+    );
+
     let is_numpad_key = is_numpad_key(&event);
     if keyboard_mode != KeyboardMode::Translate || is_numpad_key {
         let is_letter_key = is_letter_key_4_lock_modes(&event);
@@ -988,6 +1013,44 @@ pub fn event_to_key_events(
         }
     }
     key_events
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mac_map_events_include_current_modifier_snapshot() {
+        let mut events = vec![KeyEvent::new()];
+        add_map_modifier_snapshot(
+            KeyboardMode::Map,
+            OS_LOWER_MACOS,
+            &mut events,
+            (true, false, false, true),
+        );
+
+        assert_eq!(
+            events[0]
+                .modifiers
+                .iter()
+                .map(|modifier| modifier.enum_value_or_default())
+                .collect::<Vec<_>>(),
+            vec![ControlKey::Alt, ControlKey::Meta]
+        );
+    }
+
+    #[test]
+    fn map_modifier_snapshot_is_scoped_to_macos_peer() {
+        let mut events = vec![KeyEvent::new()];
+        add_map_modifier_snapshot(
+            KeyboardMode::Map,
+            OS_LOWER_WINDOWS,
+            &mut events,
+            (true, true, true, true),
+        );
+
+        assert!(events[0].modifiers.is_empty());
+    }
 }
 
 pub fn send_key_event(key_event: &KeyEvent) {

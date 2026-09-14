@@ -573,20 +573,10 @@ impl VirtualInputState {
     fn new() -> Option<Self> {
         VirtualInput::new(
             CGEventSourceStateID::CombinedSessionState,
-            // Note: `CGEventTapLocation::Session` will be affected by the mouse events.
-            // When we're simulating key events, then move the physical mouse, the key events will be affected.
-            // It looks like https://github.com/rustdesk/rustdesk/issues/9729#issuecomment-2432306822
-            // 1. Press "Command" key in RustDesk
-            // 2. Move the physical mouse
-            // 3. Press "V" key in RustDesk
-            // Then the controlled side just prints "v" instead of pasting.
-            //
-            // Changing `CGEventTapLocation::Session` to `CGEventTapLocation::HID` fixes it.
-            // But we do not consider this as a bug, because it's not a common case,
-            // we consider only RustDesk operates the controlled side.
-            //
-            // https://developer.apple.com/documentation/coregraphics/cgeventtaplocation/
-            CGEventTapLocation::Session,
+            // Mouse and legacy keyboard input are injected at HID. Keep map-mode
+            // key presses and releases in the same state domain so a modifier
+            // cannot be pressed in one domain and repaired in another.
+            CGEventTapLocation::HID,
         )
         .map(|virtual_input| Self {
             virtual_input,
@@ -832,6 +822,23 @@ fn record_key_to_key(record_key: u64) -> Option<Key> {
 
 pub fn release_device_modifiers() {
     let mut en = ENIGO.lock().unwrap();
+    #[cfg(target_os = "macos")]
+    {
+        en.reset_flag();
+        for (left, right) in [
+            (Key::Shift, Key::RightShift),
+            (Key::Control, Key::RightControl),
+            (Key::Alt, Key::RightAlt),
+            (Key::Meta, Key::RWin),
+        ] {
+            if en.get_key_state(left.clone()) || en.get_key_state(right.clone()) {
+                en.key_up_modifier_pair(left, right);
+            }
+        }
+        return;
+    }
+
+    #[cfg(not(target_os = "macos"))]
     for modifier in [
         Key::Shift,
         Key::Control,
@@ -886,6 +893,7 @@ fn fix_key_down_timeout(force: bool) {
 
 // e.g. current state of ctrl is down, but ctrl not in modifier, we should change ctrl to up, to make modifier state sync between remote and local
 #[inline]
+#[cfg(not(target_os = "macos"))]
 fn fix_modifier(
     modifiers: &[EnumOrUnknown<ControlKey>],
     key0: ControlKey,
@@ -903,30 +911,97 @@ fn fix_modifier(
     }
 }
 
+#[cfg(target_os = "macos")]
+fn should_release_modifier_pair(
+    modifiers: &[EnumOrUnknown<ControlKey>],
+    current_key: i32,
+    left_control: ControlKey,
+    right_control: ControlKey,
+    left_down: bool,
+    right_down: bool,
+) -> bool {
+    current_key != left_control.value()
+        && current_key != right_control.value()
+        && !modifiers.contains(&EnumOrUnknown::new(left_control))
+        && !modifiers.contains(&EnumOrUnknown::new(right_control))
+        && (left_down || right_down)
+}
+
+#[cfg(target_os = "macos")]
+fn fix_modifier_pair(
+    modifiers: &[EnumOrUnknown<ControlKey>],
+    current_key: i32,
+    left_control: ControlKey,
+    right_control: ControlKey,
+    left: Key,
+    right: Key,
+    en: &mut Enigo,
+) {
+    let left_down = en.get_key_state(left.clone());
+    let right_down = en.get_key_state(right.clone());
+    if should_release_modifier_pair(
+        modifiers,
+        current_key,
+        left_control,
+        right_control,
+        left_down,
+        right_down,
+    ) {
+        en.key_up_modifier_pair(left, right);
+        log::debug!("Fixed {:?} modifier pair", left_control);
+    }
+}
+
 fn fix_modifiers(modifiers: &[EnumOrUnknown<ControlKey>], en: &mut Enigo, ck: i32) {
-    if ck != ControlKey::Shift.value() {
-        fix_modifier(modifiers, ControlKey::Shift, Key::Shift, en);
+    #[cfg(target_os = "macos")]
+    {
+        for (left_control, right_control, left, right) in [
+            (
+                ControlKey::Shift,
+                ControlKey::RShift,
+                Key::Shift,
+                Key::RightShift,
+            ),
+            (
+                ControlKey::Control,
+                ControlKey::RControl,
+                Key::Control,
+                Key::RightControl,
+            ),
+            (ControlKey::Alt, ControlKey::RAlt, Key::Alt, Key::RightAlt),
+            (ControlKey::Meta, ControlKey::RWin, Key::Meta, Key::RWin),
+        ] {
+            fix_modifier_pair(modifiers, ck, left_control, right_control, left, right, en);
+        }
+        return;
     }
-    if ck != ControlKey::RShift.value() {
-        fix_modifier(modifiers, ControlKey::Shift, Key::RightShift, en);
-    }
-    if ck != ControlKey::Alt.value() {
-        fix_modifier(modifiers, ControlKey::Alt, Key::Alt, en);
-    }
-    if ck != ControlKey::RAlt.value() {
-        fix_modifier(modifiers, ControlKey::Alt, Key::RightAlt, en);
-    }
-    if ck != ControlKey::Control.value() {
-        fix_modifier(modifiers, ControlKey::Control, Key::Control, en);
-    }
-    if ck != ControlKey::RControl.value() {
-        fix_modifier(modifiers, ControlKey::Control, Key::RightControl, en);
-    }
-    if ck != ControlKey::Meta.value() {
-        fix_modifier(modifiers, ControlKey::Meta, Key::Meta, en);
-    }
-    if ck != ControlKey::RWin.value() {
-        fix_modifier(modifiers, ControlKey::Meta, Key::RWin, en);
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        if ck != ControlKey::Shift.value() {
+            fix_modifier(modifiers, ControlKey::Shift, Key::Shift, en);
+        }
+        if ck != ControlKey::RShift.value() {
+            fix_modifier(modifiers, ControlKey::Shift, Key::RightShift, en);
+        }
+        if ck != ControlKey::Alt.value() {
+            fix_modifier(modifiers, ControlKey::Alt, Key::Alt, en);
+        }
+        if ck != ControlKey::RAlt.value() {
+            fix_modifier(modifiers, ControlKey::Alt, Key::RightAlt, en);
+        }
+        if ck != ControlKey::Control.value() {
+            fix_modifier(modifiers, ControlKey::Control, Key::Control, en);
+        }
+        if ck != ControlKey::RControl.value() {
+            fix_modifier(modifiers, ControlKey::Control, Key::RightControl, en);
+        }
+        if ck != ControlKey::Meta.value() {
+            fix_modifier(modifiers, ControlKey::Meta, Key::Meta, en);
+        }
+        if ck != ControlKey::RWin.value() {
+            fix_modifier(modifiers, ControlKey::Meta, Key::RWin, en);
+        }
     }
 }
 
@@ -1075,14 +1150,19 @@ pub fn handle_mouse_simulation_(evt: &MouseEvent, conn: i32) {
     #[cfg(not(target_os = "macos"))]
     let mut to_release = Vec::new();
     if evt_type == MOUSE_TYPE_DOWN {
-        fix_modifiers(&evt.modifiers[..], &mut en, 0);
         #[cfg(target_os = "macos")]
-        en.reset_flag();
+        {
+            en.reset_flag();
+            for ref ck in evt.modifiers.iter() {
+                if let Some(key) = KEY_MAP.get(&ck.value()) {
+                    en.add_flag(key);
+                }
+            }
+        }
+        fix_modifiers(&evt.modifiers[..], &mut en, 0);
+        #[cfg(not(target_os = "macos"))]
         for ref ck in evt.modifiers.iter() {
             if let Some(key) = KEY_MAP.get(&ck.value()) {
-                #[cfg(target_os = "macos")]
-                en.add_flag(key);
-                #[cfg(not(target_os = "macos"))]
                 if key != &Key::CapsLock && key != &Key::NumLock {
                     if !get_modifier_state(key.clone(), &mut en) {
                         en.key_down(key.clone()).ok();
@@ -1398,6 +1478,20 @@ fn sim_rdev_rawkey_position(code: KeyCode, keydown: bool) {
     simulate_(&event_type);
 }
 
+#[cfg(target_os = "macos")]
+fn sim_enigo_rawkey_position(code: KeyCode, keydown: bool) {
+    let rawkey = RawKey::MacVirtualKeycode(code);
+    record_pressed_key(KeysDown::RdevKey(rawkey), keydown);
+
+    let mut en = ENIGO.lock().unwrap();
+    let key = Key::Raw(code);
+    if keydown {
+        let _ = en.key_down(key);
+    } else {
+        en.key_up(key);
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn sim_rdev_rawkey_virtual(code: u32, keydown: bool) {
     let rawkey = RawKey::WinVirtualKeycode(code);
@@ -1483,6 +1577,9 @@ fn map_keyboard_mode(evt: &KeyEvent) {
         return;
     }
 
+    #[cfg(target_os = "macos")]
+    sim_enigo_rawkey_position(evt.chr() as _, evt.down);
+    #[cfg(not(target_os = "macos"))]
     sim_rdev_rawkey_position(evt.chr() as _, evt.down);
 }
 
@@ -1511,12 +1608,34 @@ fn add_flags_to_enigo(en: &mut Enigo, key_event: &KeyEvent) {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn macos_raw_control_key_value(code: u32) -> Option<i32> {
+    match code as KeyCode {
+        rdev::kVK_Shift => Some(ControlKey::Shift.value()),
+        rdev::kVK_RightShift => Some(ControlKey::RShift.value()),
+        rdev::kVK_Control => Some(ControlKey::Control.value()),
+        rdev::kVK_RightControl => Some(ControlKey::RControl.value()),
+        rdev::kVK_Option => Some(ControlKey::Alt.value()),
+        rdev::kVK_RightOption => Some(ControlKey::RAlt.value()),
+        rdev::kVK_Command => Some(ControlKey::Meta.value()),
+        rdev::kVK_RightCommand => Some(ControlKey::RWin.value()),
+        _ => None,
+    }
+}
+
 fn get_control_key_value(key_event: &KeyEvent) -> i32 {
     if let Some(key_event::Union::ControlKey(ck)) = key_event.union {
-        ck.value()
-    } else {
-        -1
+        return ck.value();
     }
+
+    #[cfg(target_os = "macos")]
+    if key_event.mode.enum_value_or(KeyboardMode::Legacy) == KeyboardMode::Map {
+        if let Some(key_event::Union::Chr(code)) = key_event.union {
+            return macos_raw_control_key_value(code).unwrap_or(-1);
+        }
+    }
+
+    -1
 }
 
 #[inline]
@@ -2278,7 +2397,17 @@ pub fn handle_key_(evt: &KeyEvent) {
     match evt.mode.enum_value() {
         Ok(KeyboardMode::Map) => {
             #[cfg(target_os = "macos")]
-            set_last_legacy_mode(false);
+            {
+                set_last_legacy_mode(false);
+                let mut en = ENIGO.lock().unwrap();
+                en.reset_flag();
+                for ck in &evt.modifiers {
+                    if let Some(key) = KEY_MAP.get(&ck.value()) {
+                        en.add_flag(key);
+                    }
+                }
+                release_unpressed_modifiers(&mut en, evt);
+            }
             map_keyboard_mode(evt);
         }
         Ok(KeyboardMode::Translate) => {
@@ -2472,4 +2601,74 @@ lazy_static::lazy_static! {
         (ControlKey::Insert, true),
         (ControlKey::Delete, true),
     ].iter().map(|(a, b)| (a.value(), b.clone())).collect();
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn modifier_pair_release_requires_both_remote_sides_to_be_up() {
+        let none = Vec::new();
+        assert!(should_release_modifier_pair(
+            &none,
+            ControlKey::Tab.value(),
+            ControlKey::Control,
+            ControlKey::RControl,
+            true,
+            true,
+        ));
+
+        let left_down = vec![EnumOrUnknown::new(ControlKey::Control)];
+        assert!(!should_release_modifier_pair(
+            &left_down,
+            ControlKey::Tab.value(),
+            ControlKey::Control,
+            ControlKey::RControl,
+            true,
+            true,
+        ));
+
+        let right_down = vec![EnumOrUnknown::new(ControlKey::RControl)];
+        assert!(!should_release_modifier_pair(
+            &right_down,
+            ControlKey::Tab.value(),
+            ControlKey::Control,
+            ControlKey::RControl,
+            true,
+            true,
+        ));
+    }
+
+    #[test]
+    fn modifier_pair_release_skips_the_current_modifier_event() {
+        let none = Vec::new();
+        assert!(!should_release_modifier_pair(
+            &none,
+            ControlKey::RControl.value(),
+            ControlKey::Control,
+            ControlKey::RControl,
+            true,
+            true,
+        ));
+    }
+
+    #[test]
+    fn map_raw_modifier_is_the_current_modifier_event() {
+        for (code, expected) in [
+            (rdev::kVK_Shift, ControlKey::Shift),
+            (rdev::kVK_RightShift, ControlKey::RShift),
+            (rdev::kVK_Control, ControlKey::Control),
+            (rdev::kVK_RightControl, ControlKey::RControl),
+            (rdev::kVK_Option, ControlKey::Alt),
+            (rdev::kVK_RightOption, ControlKey::RAlt),
+            (rdev::kVK_Command, ControlKey::Meta),
+            (rdev::kVK_RightCommand, ControlKey::RWin),
+        ] {
+            let mut event = KeyEvent::new();
+            event.mode = KeyboardMode::Map.into();
+            event.set_chr(code as _);
+            assert_eq!(get_control_key_value(&event), expected.value());
+        }
+    }
 }

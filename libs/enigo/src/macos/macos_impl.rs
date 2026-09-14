@@ -117,6 +117,25 @@ pub struct Enigo {
 }
 
 impl Enigo {
+    /// Releases both physical sides of one modifier from a clean HID source.
+    pub fn key_up_modifier_pair(&mut self, left: Key, right: Key) {
+        let codes = [self.key_to_keycode(left), self.key_to_keycode(right)];
+        let Ok(src) = CGEventSource::new(CGEventSourceStateID::CombinedSessionState) else {
+            return;
+        };
+
+        for code in codes {
+            if let Ok(event) = CGEvent::new_keyboard_event(src.clone(), code, false) {
+                event.set_flags(CGEventFlags::CGEventFlagNull);
+                event.set_integer_value_field(
+                    EventField::EVENT_SOURCE_USER_DATA,
+                    ENIGO_INPUT_EXTRA_VALUE,
+                );
+                event.post(CGEventTapLocation::HID);
+            }
+        }
+    }
+
     /// Set if ignore flags when posting events.
     pub fn set_ignore_flags(&mut self, ignore: bool) {
         self.ignore_flags = ignore;
